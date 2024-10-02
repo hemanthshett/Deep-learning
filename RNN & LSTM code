@@ -1,0 +1,190 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.layers import SimpleRNN, Dense, Dropout
+import matplotlib.pyplot as plt
+
+
+from google.colab import drive
+drive.mount('/content/drive')
+
+data = pd.read_csv('/content/drive/MyDrive/Google_Stock_Price_Train.csv')
+
+print(data.head())
+print(data.shape)
+
+data['Date']=pd.to_datetime(data['Date'])                 #Convert Date column to datetime objects
+
+data['year']=data['Date'].dt.year                          #Extract features from datetime
+data['month']=data['Date'].dt.month
+data['day']=data['Date'].dt.day
+print(data['year'])
+print(data['month'])
+print(data['day'])
+
+features = ['year','month','day']                   #if we take more features - many to one
+x=data[features]                                    #if we take any one feature - one to one
+y=data['Open']            #Assume 'open' column as the column to be predicted
+
+scaler = MinMaxScaler()
+
+x_scaled = scaler.fit_transform(x)
+y_scaled = scaler.fit_transform(y.values.reshape(-1,1))            #since we dont know number of rows to be predicted take it as -1, column is only one (OPEN) hence 1
+
+#Create sequences for RNN
+timesteps = 50                   #how many value we take to predict
+x_sequences = []
+y_sequences = []
+
+                 #50           #1258
+for i in range(timesteps, len(x_scaled)):                        #taking 0 to 49 rows to predict 50th row                i=50 in first iteration   i=51 for next
+    x_sequences.append(x_scaled[i-timesteps:i])                            #[50-50:50]=[0:50]
+    y_sequences.append(y_scaled[i])
+
+x_sequences, y_sequences = np.array(x_sequences), np.array(y_sequences)              #converting the x_seq and y_seq LISTS into ARRAY
+
+x_train, x_test, y_train, y_test = train_test_split(x_sequences, y_sequences, test_size=0.2, random_state=0)    #to let the data go in sequential manner, random_state=90
+
+from keras.layers import Dropout
+model = Sequential()
+model.add(SimpleRNN(50, activation='tanh', input_shape=(50,3), return_sequences=True))    #return sequence used to store 50th sequence to predict 51th sequence
+model.add(Dropout(0.2))                                                                   #Dropout is optional
+model.add(SimpleRNN(50, activation='tanh', return_sequences=True))
+model.add(Dropout(0.2))
+model.add(SimpleRNN(50, activation='tanh', return_sequences=True))
+model.add(Dropout(0.2))
+model.add(SimpleRNN(50))
+model.add(Dense(1, activation='linear'))                    # output layer
+
+model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mse'])
+
+model.fit(x_train, y_train, epochs=10, batch_size=10, verbose=1)              #Train the model
+
+
+from keras.layers import Dropout
+model = Sequential()
+model.add(SimpleRNN(50, activation='tanh', input_shape=(50,3), return_sequences=True))    #return sequence used to store 50th sequence to predict 51th sequence
+#model.add(Dropout(0.2))                                                                   #Dropout is optional
+model.add(SimpleRNN(50, activation='tanh', return_sequences=True))
+#model.add(Dropout(0.2))
+model.add(SimpleRNN(50, activation='tanh', return_sequences=True))
+#model.add(Dropout(0.2))
+model.add(SimpleRNN(50))
+model.add(Dense(1, activation='linear'))                    # output layer
+
+model.compile(loss='mean_squared_error', optimizer='adadelta', metrics=['mse'])
+
+model.fit(x_train, y_train, epochs=10, batch_size=10, verbose=1)              #Train the model
+
+
+#vanilla rnn
+from keras.layers import Dropout
+model = Sequential()
+model.add(SimpleRNN(50, activation='tanh', input_shape=(50,3), return_sequences=True))    #return sequence used to store 50th sequence to predict 51th sequence
+model.add(Dense(1, activation='linear'))                    # output layer
+
+model.compile(loss='mean_squared_error', optimizer='adadelta', metrics=['mse'])
+
+model.fit(x_train, y_train, epochs=10, batch_size=10, verbose=1)
+
+y_pred_scaled = model.predict(x_test)                           #we get dim error if we run after vanilla rnn
+y_pred = scaler.inverse_transform(y_pred_scaled)
+y_test_true = scaler.inverse_transform(y_test)
+
+plt.figure(figsize=(8,5))
+
+#subplot for true open prices
+plt.subplot(2,1,1)
+plt.plot(y_test_true, label='True Open Price', color='magenta')
+plt.title('True Open Prices')
+plt.xlabel('Time')
+plt.ylabel('Open Price')
+plt.legend()
+
+#Adjust layout to avoid overlap
+plt.tight_layout()
+plt.show()
+
+
+plt.figure(figsize=(8,5))
+
+#subplot for true open prices
+plt.subplot(2,1,2)
+plt.plot(y_pred, label='Predicted Open Price', color='orange')
+plt.title('Predicted Open Prices')
+plt.xlabel('Time')
+plt.ylabel('Open Price')
+plt.legend()
+
+#Adjust layout to avoid overlap
+plt.tight_layout()
+plt.show()
+
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(8,5))
+plt.plot(y_test_true, label='True price')
+plt.plot(y_pred, label='Predicted price')
+plt.title('Stock Price Prediction')
+plt.xlabel('time')
+plt.ylabel('price')
+plt.legend()
+plt.show
+
+#Building the vanilla LSTM model
+from keras.layers import LSTM
+model = Sequential()
+model.add(LSTM(50, activation='tanh', input_shape=(timesteps,3)))
+model.add(Dropout(0,2))
+model.add(Dense(1,activation='linear'))
+
+model.compile(loss='mean_squared_error', optimizer='adam', metrics=['mse'])
+
+model.fit(x_train, y_train, epochs=10, batch_size=10, verbose=1)
+
+y_pred_scaled = model.predict(x_test)
+y_pred = scaler.inverse_transform(y_pred_scaled)
+y_test_true = scaler.inverse_transform(y_test)
+
+plt.figure(figsize=(10,6))
+plt.plot(y_test_true, label='True Open Price')
+plt.plot(y_pred, label='Predicted Open Prices')
+plt.title('Stock Price Prediction with Vanilla LSTM')
+plt.xlabel('Time')
+plt.ylabel('Open Price')
+plt.legend()
+plt.show()
+
+
+#Stacked LSTM
+model = Sequential()
+model.add(LSTM(50, activation='tanh', input_shape=(50,3), return_sequences=True))
+#model.add(LSTM(0.2))
+model.add(LSTM(50, activation='tanh', return_sequences=True))
+#model.add(LSTM(0.2))
+model.add(LSTM(50, activation='tanh', return_sequences=True))
+#model.add(LSTM(0.2))
+model.add(LSTM(50))
+model.add(Dense(1, activation='linear'))                    # output layer
+
+model.compile(loss='mean_squared_error', optimizer='adadelta', metrics=['mse'])
+
+model.fit(x_train, y_train, epochs=10, batch_size=10, verbose=1)
+
+#Bi-directional LSTM
+from keras.layers import Bidirectional
+model = Sequential()
+model.add(Bidirectional(LSTM(50, activation='tanh', input_shape=(50,3), return_sequences=True)))
+#model.add(LSTM(0.2))
+model.add(Bidirectional(LSTM(50, activation='tanh', return_sequences=True)))
+#model.add(LSTM(0.2))
+model.add(Bidirectional(LSTM(50, activation='tanh', return_sequences=True)))
+#model.add(LSTM(0.2))
+model.add(Bidirectional(LSTM(50)))
+model.add(Dense(1, activation='linear'))                    # output layer
+
+model.compile(loss='mean_squared_error', optimizer='adadelta', metrics=['mse'])
+
+model.fit(x_train, y_train, epochs=10, batch_size=10, verbose=1)
