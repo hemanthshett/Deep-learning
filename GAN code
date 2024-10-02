@@ -1,0 +1,210 @@
+# Import relevant libraries
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torchvision import datasets, transforms
+from torch.autograd import Variable
+from torchvision.utils import save_image
+import numpy as np
+
+# Set display options; this step is optional
+
+
+torch.set_printoptions(precision=2, sci_mode=None)
+np.set_printoptions(precision=2, suppress=None)
+# Device configuration; set this to GPU for faster training
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+# Define the tranformations to be applied on the dataset
+
+transform = transforms.Compose([transforms.ToTensor(),
+  transforms.Normalize((0.5,), (0.5,))
+])
+
+# Download the MNIST dataset;
+
+train_dataset = datasets.MNIST(root='./mnist_data/', train=True, transform=transform, download=True)
+test_dataset = datasets.MNIST(root='./mnist_data/', train=False, transform=transform, download=True)
+
+# Set the batch size for creating train and test loaders
+
+bs = 100
+
+# Create the DataLoader class
+
+train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=bs, shuffle=True)
+test_loader = torch.utils.data.DataLoader(dataset=test_dataset, batch_size=bs, shuffle=True)
+
+# Create the Generator network
+
+class Generator(nn.Module):
+    def __init__(self, g_input_dim, g_output_dim):
+        super(Generator, self).__init__()
+        self.fc1 = nn.Linear(g_input_dim, 256)
+        self.fc2 = nn.Linear(self.fc1.out_features, self.fc1.out_features*2)
+        self.fc3 = nn.Linear(self.fc2.out_features, self.fc2.out_features*2)
+        self.fc4 = nn.Linear(self.fc3.out_features, g_output_dim)
+
+    # forward method
+    def forward(self, x):
+        x = F.leaky_relu(self.fc1(x), 0.2)
+        x = F.leaky_relu(self.fc2(x), 0.2)
+        x = F.leaky_relu(self.fc3(x), 0.2)
+        return torch.tanh(self.fc4(x))
+
+# Create the Discriminator network
+
+class Discriminator(nn.Module):
+    def __init__(self, d_input_dim):
+        super(Discriminator, self).__init__()
+        self.fc1 = nn.Linear(d_input_dim, 1024)
+        self.fc2 = nn.Linear(self.fc1.out_features, self.fc1.out_features//2)
+        self.fc3 = nn.Linear(self.fc2.out_features, self.fc2.out_features//2)
+        self.fc4 = nn.Linear(self.fc3.out_features, 1)
+
+    # forward method
+    def forward(self, x):
+        x = F.leaky_relu(self.fc1(x), 0.2)
+        x = F.dropout(x, 0.3)
+        x = F.leaky_relu(self.fc2(x), 0.2)
+        x = F.dropout(x, 0.3)
+        x = F.leaky_relu(self.fc3(x), 0.2)
+        x = F.dropout(x, 0.3)
+        return torch.sigmoid(self.fc4(x))  # this is a constant
+
+
+# Build the GAN network by combining the Generator and Discriminator networks
+
+# Set the dimensions of the noise vector z
+z_dim = 100
+
+# Compute the input dimensions of the input vectors fed to the Discriminator
+mnist_dim = train_dataset.train_data.size(1) * train_dataset.train_data.size(2)
+
+# Initialize the Generator and Discriminator networks
+
+G = Generator(g_input_dim = z_dim, g_output_dim = mnist_dim).to(device)
+D = Discriminator(mnist_dim).to(device)
+
+# Getting the model summary
+
+from torchsummary import summary
+
+print("Generator Network Architecture: \n\n", G, "\n\n")
+print("Summary(Generator): \n", summary(G, (z_dim,)))
+
+# Visualize the discriminator network
+
+print("Discriminator Network Architecture: \n\n", D, "\n\n")
+print("Summary(Generator): \n", summary(G, (mnist_dim, bs)))
+
+# Define the loss function to be minimized
+
+criterion = nn.BCELoss()
+
+# Initialize the optimizers for the generator and the discriminator; since requirements of the two networks are different, different optimizers are preferred
+
+lr_g = 0.002
+lr_d = 0.0002
+G_optimizer = optim.Adam(G.parameters(), lr = lr_g)
+D_optimizer = optim.Adam(D.parameters(), lr = lr_d)
+
+# Define the training of the Discriminator network
+
+def D_train(x):
+    #=======================Train the discriminator=======================#
+    D.zero_grad()
+
+    # train discriminator on real
+    x_real, y_real = x.view(-1, mnist_dim), torch.ones(bs, 1)
+    x_real, y_real = Variable(x_real.to(device)), Variable(y_real.to(device))
+
+    D_output = D(x_real)
+    D_real_loss = criterion(D_output, y_real)
+    D_real_score = D_output
+
+    # train discriminator on fake
+    z = Variable(torch.randn(bs, z_dim).to(device))
+    x_fake, y_fake = G(z), Variable(torch.zeros(bs, 1).to(device))
+
+    D_output = D(x_fake)
+    D_fake_loss = criterion(D_output, y_fake)
+    D_fake_score = D_output
+
+    # gradient backprop & optimize ONLY D's parameters
+    D_loss = D_real_loss + D_fake_loss
+    D_loss.backward()
+    D_optimizer.step()
+
+    return  D_loss.data.item()
+
+# Define the training of the Generator network
+
+def G_train(x):
+    #=======================Train the generator=======================#
+    G.zero_grad()
+
+    z = Variable(torch.randn(bs, z_dim).to(device))
+    y = Variable(torch.ones(bs, 1).to(device))
+
+    G_output = G(z)
+    D_output = D(G_output)
+    G_loss = criterion(D_output, y)
+
+    # gradient backprop & optimize ONLY G's parameters
+    G_loss.backward()
+    G_optimizer.step()
+
+    return G_loss.data.item()
+
+
+# Train the GAN network
+
+import time
+
+start_time = time.time()
+
+num_epochs=2
+
+for epoch in range(num_epochs):
+    for i, data in enumerate(train_loader, 0):
+
+        D_optimizer.zero_grad()
+        real_data = data[0].to(device)
+        real_data = real_data.resize(bs, real_data.size()[2]*real_data.size()[3])
+        b_size = real_data.size(0)
+        label = torch.ones((b_size,), device=device)
+
+        output = D(real_data).view(-1)
+        errD_real = criterion(output, label)
+        errD_real.backward()
+
+        noise = torch.randn(b_size, z_dim, device=device)
+        print("noise.size()", noise.size(), "\n")
+        fake = G(noise)
+        label.fill_(0)
+        output = D(fake.detach()).view(-1)
+        errD_fake = criterion(output, label)
+        errD_fake.backward()
+
+        errD = errD_real + errD_fake
+        D_optimizer.step()
+
+        # Update the generator network
+        G_optimizer.zero_grad()
+        label.fill_(1)
+        output = D(fake).view(-1)
+        errG = criterion(output, label)
+        errG.backward()
+        G_optimizer.step()
+
+        # Print statistics
+        if i % 2 == 0:
+            print("Epoch: ", (epoch+1), "\tError(D): ", errD.item(), "\tError(G): ", errG.item(), "\n")
+
+end_time = time.time()
+total_training_time = end_time - start_time
+print("Total training time: \t", (total_training_time/60), " minutes")
