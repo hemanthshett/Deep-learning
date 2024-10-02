@@ -1,0 +1,51 @@
+!pip install ultralytics
+
+from ultralytics import YOLO
+from matplotlib import pyplot as plt
+from PIL import Image
+
+#detection model
+det_model = YOLO('yolov8n.pt')
+
+#instance model
+inst_model = YOLO('yolov8n-seg.pt')
+
+img='/content/Test1.jpg'
+detection_results = det_model.predict(img)
+instance_results = inst_model.predict(img)
+
+print(type( detection_results))
+
+print(len(detection_results))
+
+detection_result_array = detection_results[0].plot()                #to take all info in 0th position to plot
+instance_result_array = instance_results[0].plot()
+fig = plt.figure(figsize=(18,9))
+ax1 = fig.add_subplot(1,2,1)
+ax1.set_title('Object Detection')
+ax1 = plt.imshow(detection_result_array)
+ax2 = fig.add_subplot(1,2,2)
+ax2.set_title('Instance Segmentation')
+ax2 = plt.imshow(instance_result_array)
+plt.imshow(instance_result_array)
+
+img='/content/cat_dog.jpg'
+detection_results = det_model.predict(img)
+instance_results = inst_model.predict(img)
+
+The following objects can be detected
+
+print(detection_results)
+
+detection_result_array = detection_results[0].plot()                #to take all info in 0th position to plot
+instance_result_array = instance_results[0].plot()
+fig = plt.figure(figsize=(18,9))
+ax1 = fig.add_subplot(1,2,1)
+ax1.set_title('Object Detection')
+ax1 = plt.imshow(detection_result_array)
+ax2 = fig.add_subplot(1,2,2)
+ax2.set_title('Instance Segmentation')
+ax2 = plt.imshow(instance_result_array)
+plt.imshow(instance_result_array)
+
+If there is one class, one complete boundary takes one colour - Intance Segmentation
